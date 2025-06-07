@@ -1,26 +1,84 @@
-const express = require('express');
+const express = require("express");
+const axios = require("axios");
+const bodyParser = require("body-parser");
+
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
+app.use(bodyParser.json());
 
-app.post('/webhook', (req, res) => {
-  // We'll fill this in soon, promise!
+const sessions = {}; // temporary memory
+
+app.post("/webhook", async (req, res) => {
+  const { phone, message } = req.body;
+
+  if (!sessions[phone]) {
+    sessions[phone] = { step: 1 };
+    res.sendStatus(200);
+    // return sendMessage(phone, "Hello! What's your name?");
+  }
+
+  const session = sessions[phone];
+
+  if (session.step === 1) {
+    session.name = message;
+    session.step = 2;
+    return sendMessage(
+      phone,
+      `Nice to meet you, ${message}! What's your email?`
+    );
+  }
+
+  if (session.step === 2) {
+    session.email = message;
+
+    try {
+      // Send to Perfex CRM
+      await axios.post(
+        "https://crm.casadoimportador.com.br/api/leads",
+        {
+          name: session.name,
+          email: session.email,
+          source: "WhatsApp",
+        },
+        {
+          headers: { "Authorization": `Bearer ce2a9212e017a7f5ada536a8b2b6d29d1749276621` },
+        }
+      );
+
+      // Send to Selzy
+      await axios.post("https://api.selzy.com/en/api/subscribers", {
+        email: session.email,
+        name: session.name,
+        api_key: "6u8gzqxm7r5whgii5t897mu7x9ppga5zdmaypeqy",
+      });
+
+      await sendMessage(
+        phone,
+        `Thanks, ${session.name}! We've saved your info and sent you a welcome email`
+      );
+    } catch (error) {
+      console.error(
+        "Error during API calls:",
+        error.response?.data || error.message
+      );
+      await sendMessage(
+        phone,
+        "Oops! Something went wrong. Please try again later."
+      );
+    }
+
+    delete sessions[phone]; //  Reset session
+  }
+
   res.sendStatus(200);
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+function sendMessage(phone, text) {
+  // Replace with actual Youseller send message endpoint
+  return axios.post("https://youseller.com.br/api/send-message", {
+    phone,
+    message: text,
+  });
+}
 
-app.get('/webhook', (req, res) => {
-  const VERIFY_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI0IiwianRpIjoiODEyMjBiMGExODY1NGM1ZDBhYTc0NjBmOGU3MWFmYmI2ZjJlODRjMjZhMTNlMTg5YTkyMzJiZmZlNmQ3YWFhMDE0Y2VhYTgwNGUxZTE5NGEiLCJpYXQiOjE3NDkzMDUxNzYuMjI5NDQ4LCJuYmYiOjE3NDkzMDUxNzYuMjI5NDUyLCJleHAiOjQ5MDQ5Nzg3NzYuMjI1MjQ1LCJzdWIiOiIxNTcyMjAyIiwic2NvcGVzIjpbXX0.lFc9mBuUfDBMJ-Vj102nS7E6FfHLxRaCy3Iva9WXlUm1um6aY7Z9clgJfFsxNC3urCi3a5c6706Hg03zPfPdKYR1J4o3Blh4ggL84gZK3NfoPscNLW-t3aQ_X9yBabV7VIpfkYQwCdcRTc46LYN_o-wtwByLNaa9xKxjvA-yHSu447ZsjOeFn5kGLtGV9kfYmPaMj7FPQovNpDRR2wcKvfOIhsa_ke5-yBVtY3dRchpTi1Vdkw2ipGYJQVET_h9EjD4BORzKV36r9mG5bJsLulWUQxUkRGBHU8LpfZMKKMOA4vgsffSpaE48cHOOw5mpOV1E-nxetCe54r6fSIT4_QdCOaY_nUnExrJZG0OTrVx_qmGxEEGErJ3SOMAzirmb5EKQ4kpWiDwIL37LGpjxubXoPuL2EVEnwrN2I6ZklIimu0Vl4PxjTZ4wfyDpPHSCm7R6_7ayMC2jamVmGGt6WrcOVyO793RBunOjFephqRoJLHe50KsSdv_feTCnPpsvmhVACiQd0E8RO1fKaT7YU3O6HkJX1JQqgR1x_u_duRBxEnOaFInueuxoW6FYdn5G-fQULtb9rZQKBkuGEYzeH0OAdM5E0n1sJFAgXE_QAIM-nM0uKhs9utDP_Lv_vEJ1X9K6gur2KpKx0wi1D3XMBsOYhaLr-gN5WZZncpyY1Uc';
-  
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  
-  if (mode && token === VERIFY_TOKEN) {
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
-  }
-});
+app.listen(3000, () => console.log("Bot is running on port 3000!"));
