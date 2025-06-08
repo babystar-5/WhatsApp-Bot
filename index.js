@@ -78,7 +78,7 @@ app.post("/webhook", async (req, res) => {
 function sendMessage(phone, text) {
   // Replace with actual Youseller send message endpoint
   return axios.post(
-    "https://whatsapp-bot-nfsl.onrender.com/webhook/whatsapp",
+    "https://whatsapp-bot-nfsl.onrender.com/webhook",
     {
       phone,
       message: text,
